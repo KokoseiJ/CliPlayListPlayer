@@ -1,2 +1,14 @@
+# Geckodriver/addons should be downloaded by the user.
 geckodriver
 geckodriver.*
+adblocker.xpi
+
+# My playlists won't be provided.
+playlist/*
+
+# requirements.txt file is provided, You don't need pipfile
+Pipfile
+Pipfile.*
+
+# MY API KEY IS VERY, BY VERY I MEAN VEEEERY SECRET
+spotify_client

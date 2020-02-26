@@ -1,0 +1,6 @@
+beautifulsoup4
+bs4
+selenium
+soupsieve
+urllib3
+wget
