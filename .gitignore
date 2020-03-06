@@ -12,3 +12,6 @@ Pipfile.*
 
 # MY API KEY IS VERY, BY VERY I MEAN VEEEERY SECRET
 spotify_client
+
+#HTML files are created for debugging search_youtube_noapi function, let's just ignore it
+*.html
