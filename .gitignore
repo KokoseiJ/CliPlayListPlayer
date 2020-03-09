@@ -16,5 +16,8 @@ spotify_client
 #HTML files are created for debugging search_youtube_noapi function, let's just ignore it
 *.html
 
+#Sublime files
+*.sublime-*
+
 #Test files shouldn't be included
 test*

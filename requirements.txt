@@ -1,6 +1,3 @@
-beautifulsoup4
+requests
 bs4
 selenium
-soupsieve
-urllib3
-wget
