@@ -1,18 +1,47 @@
-import selenium
 import os
-import time
-import random
-import json
 import sys
+import json
+import time
+import queue
+import random
 import argparse
-import textwrap
+import keyinput
 import requests
+import selenium
+import textwrap
 import multiprocessing
+from base64 import b64encode
+from bs4 import BeautifulSoup as bs
 from selenium.webdriver import Firefox
 from selenium.webdriver import FirefoxProfile
-from selenium.webdriver.firefox.options import Options
-from bs4 import BeautifulSoup as bs
-from base64 import b64encode
+from selenium.webdriver.firefox.options import Options    
+
+def clear_line():
+    print(" " * os.get_terminal_size().columns, end = "\r")
+    return
+
+def sec_convert(sec):
+    if sec > 3600:
+        return time.strftime("%H:%M:%S", time.gmtime(sec))
+    else:
+        return time.strftime("%M:%S", time.gmtime(sec))
+
+def status_text(songname, pos, curtime, fulltime, playing, name_length = 15):
+    percent = int(curtime / fulltime * 20)
+    if len(songname) > name_length:
+        nametxt = (songname + "  " + songname)[pos:pos + name_length]
+        pos += 1
+        if pos == len(songname) + 2:
+            pos = 0
+    else:
+        nametxt = songname
+    if playing:
+        status = "Playing"
+    else:
+        status = "Paused"
+    statusbar = "[" + "=" * percent + "-" * (20 - percent) + "]"
+    print(f"{nametxt} {statusbar} {sec_convert(curtime)}/{sec_convert(fulltime)} {status}", end = "\r")
+    return pos
 
 def search_youtube_noapi(query):
     """
@@ -122,18 +151,44 @@ def play_yt(driver, video):
     use getPlayerState function to check if video has finished and return if true.
     """
     driver.execute_script(f"document.getElementById('movie_player').loadVideoById('{video['id']}')")
+    rtnvalue = 0
+    playing = True
+    pos = 0
+    # getDuration() value will return 0 while loading metadata and that causes the Exception
+    # This will prevent it from being 0
+    fulltime = 0
+    while not fulltime:
+        fulltime = driver.execute_script("return document.getElementById('movie_player').getDuration()")
     while True:
         if driver.execute_script("return document.getElementById('movie_player').getPlayerState()") == 0:
             break
-        time.sleep(1)
+        curtime = driver.execute_script("return document.getElementById('movie_player').getCurrentTime()")
+        clear_line()
+        pos = status_text(video['title'], pos, curtime, fulltime, playing)
+        key = keyinput.listen_key(1)
+        if key != None:
+            key = key.upper()
+            if key == " ":
+                if playing:
+                    driver.execute_script("document.getElementById('movie_player').pauseVideo()")
+                    playing = False
+                else:
+                    driver.execute_script("document.getElementById('movie_player').playVideo()")
+                    playing = True
+            elif key == "Q":
+                rtnvalue = 1
+                break
+            elif key == "E":
+                rtnvalue = 0
+                break
     # Workaround to stop autoplay.
-    driver.execute_script(f"document.getElementById('movie_player').playVideo()")
-    driver.execute_script(f"document.getElementById('movie_player').pauseVideo()")
-    return
+    driver.execute_script("document.getElementById('movie_player').playVideo()")
+    driver.execute_script("document.getElementById('movie_player').pauseVideo()")
+    return rtnvalue
 
 PATH = os.path.dirname(os.path.abspath(__file__))
 
-if sys.platform in ["win32", "cygwin"]:
+if os.name == "nt":
     DRIVER = os.path.join(PATH, "geckodriver.exe")
 else:
     DRIVER = os.path.join(PATH, "geckodriver")
@@ -177,7 +232,7 @@ if __name__ == "__main__":
                                 PATH, "playlist", f"{alias}.playlist")))['list']]
         # I mean, Some videos can't be played in /embed somehow and I can't find a way to fix it
         # So let's just use Rick Astley - Never Gonna Give You Up's page to play it lol
-        # If something bad happens this program will end up rickrolling the user
+        # If something bad happens this will end up rickrolling the user
         url_yt = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         options = Options()
         options.headless = args.debug
@@ -193,9 +248,18 @@ if __name__ == "__main__":
         while True:
             if args.shuffle:
                 random.shuffle(playlist)
-            for video in playlist:
+            num = 0
+            while num < len(playlist):
+                video = playlist[num]
                 print(f"Now Playing {video['title']} by {video['owner']}")
-                play_yt(driver, video)
+                rtn = play_yt(driver, video)
+                if rtn == 1:
+                    if num == 0:
+                        num = len(playlist)
+                    num -= 1
+                else:
+                    num += 1
+                clear_line()
             if not args.repeat:
                 break
 
@@ -229,7 +293,7 @@ if __name__ == "__main__":
                 playlistid, alias = playlist.split(":")
                 token = get_token_spotify()
                 searchlist = get_playlist_spotify(token, playlistid)
-                #rtnlist = [search_youtube_noapi(query) for query in searchlist]
+                #rtnlist = [search_youtube_noapi(query) for query in searchlist] <= Without multiprocessing
                 rtnlist = multiprocessing.Pool(100).map(search_youtube_noapi, searchlist)
                 rtndict = {
                     "type": "spotify",
