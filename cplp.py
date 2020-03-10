@@ -40,7 +40,9 @@ def status_text(songname, pos, curtime, fulltime, playing, name_length = 15):
     else:
         status = "Paused"
     statusbar = "[" + "=" * percent + "-" * (20 - percent) + "]"
-    print(f"{nametxt} {statusbar} {sec_convert(curtime)}/{sec_convert(fulltime)} {status}", end = "\r")
+    printtxt = f"\r{nametxt} {statusbar} {sec_convert(curtime)}/{sec_convert(fulltime)} {status}"
+    printtxt += " " * (os.get_terminal_size().columns - len(printtxt))
+    print(printtxt, end = "")
     return pos
 
 def search_youtube_noapi(query):
@@ -163,7 +165,6 @@ def play_yt(driver, video):
         if driver.execute_script("return document.getElementById('movie_player').getPlayerState()") == 0:
             break
         curtime = driver.execute_script("return document.getElementById('movie_player').getCurrentTime()")
-        clear_line()
         pos = status_text(video['title'], pos, curtime, fulltime, playing)
         key = keyinput.listen_key(1)
         if key != None:
@@ -251,7 +252,9 @@ if __name__ == "__main__":
             num = 0
             while num < len(playlist):
                 video = playlist[num]
-                print(f"Now Playing {video['title']} by {video['owner']}")
+                printtxt = f"\rNow Playing {video['title']} by {video['owner']}"
+                printtxt += " " * (os.get_terminal_size().columns - len(printtxt))
+                print(printtxt)
                 rtn = play_yt(driver, video)
                 if rtn == 1:
                     if num == 0:
@@ -259,7 +262,6 @@ if __name__ == "__main__":
                     num -= 1
                 else:
                     num += 1
-                clear_line()
             if not args.repeat:
                 break
 

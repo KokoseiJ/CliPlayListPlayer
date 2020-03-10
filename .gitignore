@@ -19,5 +19,8 @@ spotify_client
 #Sublime files
 *.sublime-*
 
+#pycache
+__pycache__/*
+
 #Test files shouldn't be included
 test*

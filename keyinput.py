@@ -1,6 +1,6 @@
 import os, queue, threading
 if os.name == "nt":
-    raise OSError("Windows implementation hasn't been implemented yet")
+    import msvcrt, time
 elif os.name == "posix":
     import sys, tty, termios, select
 else:
@@ -17,13 +17,14 @@ def listen_key(timeout = None):
     elif type(timeout) != int:
         raise ValueError("'timeout' argument only accepts integer value")
     if os.name == "nt":
-        raise OSError("Windows implementation hasn't been implemented yet")
+        return _listen_key_nt(timeout)
     elif os.name == "posix":
         return _listen_key_posix(timeout)
 
 def _listen_key_posix(timeout):
     """
     listen to the keypress until it reaches timeout and returns pressed key.
+    return type is str.
     returns None if nothing was pressed.
     """
     oldsettings = termios.tcgetattr(sys.stdin.fileno())
@@ -39,19 +40,18 @@ def _listen_key_posix(timeout):
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, oldsettings)
     return key
 
-def get_key_queue():
-    keyqueue = queue.Queue()
-    if os.name == "nt":
-        raise OSError("Windows implementation hasn't been implemented yet")
-    elif os.name == "posix":
-        threading.Thread(target = _get_key_queue_posix, args = (keyqueue,)).start()
-    return keyqueue
-
-def _get_key_queue_posix(queue):
-    oldsettings = termios.tcgetattr(sys.stdin.fileno())
-    tty.setcbreak(sys.stdin)
-    try:
-        while True:
-            queue.put(sys.stdin.read(1))
-    finally:
-        termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, oldsettings)
+def _listen_key_nt(timeout):
+    """
+    listen to the keypress until it reaches timeout and returns pressed key.
+    return type is str.
+    returns None if nothing was pressed.
+    """
+    starttime = time.time()
+    while True:
+        if msvcrt.kbhit():
+            try:
+                return msvcrt.getch().decode()
+            except UnicodeDecodeError:
+                return None
+        if time.time() - starttime >= timeout:
+            return None
