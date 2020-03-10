@@ -267,6 +267,8 @@ if __name__ == "__main__":
 
     # TODO: use same driver for every loop of "get" thing
     elif args.mode == "get":
+        if not "playlist" in os.listdir():
+            os.mkdir("playlist")
         """
         check if there's at least 1 argument and every argument contains :
         """
