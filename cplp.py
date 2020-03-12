@@ -1,24 +1,13 @@
 import os
-import sys
 import json
 import time
-import queue
+import module
 import random
 import argparse
 import keyinput
-import requests
-import selenium
-import textwrap
-import multiprocessing
-from base64 import b64encode
-from bs4 import BeautifulSoup as bs
 from selenium.webdriver import Firefox
 from selenium.webdriver import FirefoxProfile
-from selenium.webdriver.firefox.options import Options    
-
-def clear_line():
-    print(" " * os.get_terminal_size().columns, end = "\r")
-    return
+from selenium.webdriver.firefox.options import Options 
 
 def sec_convert(sec):
     if sec > 3600:
@@ -41,151 +30,7 @@ def status_text(songname, pos, curtime, fulltime, playing, name_length = 15):
         status = "Paused"
     statusbar = "[" + "=" * percent + "-" * (20 - percent) + "]"
     printtxt = f"\r{nametxt} {statusbar} {sec_convert(curtime)}/{sec_convert(fulltime)} {status}"
-    printtxt += " " * (os.get_terminal_size().columns - len(printtxt))
-    print(printtxt, end = "")
-    return pos
-
-def search_youtube_noapi(query):
-    """
-    Searches the query from youtube website(not API),
-    grabs first result, form it nicely and return it.
-    """
-    print(query)
-    url = f"https://youtube.com/results?search_query={query}"
-    r = requests.get(url)
-    soup = bs(r.text, "html.parser")
-    try:
-        playlist = soup.find("ol", {"class": "item-section"}).find_all("div", {"class": "yt-lockup"})
-        vid = playlist[0]
-        title = vid.find("h3", {"class": "yt-lockup-title"})
-        title.find("span").extract()
-        tempdict = {}
-        tempdict['type'] = "youtube"
-        tempdict['title'] = title.text
-        tempdict['owner'] = vid.find("div", {"class":"yt-lockup-byline"}).find("a").text
-        tempdict['id'] = vid['data-context-item-id']
-        return tempdict
-    except:
-        print("An error has occured. Retrying...")
-        time.sleep(1)
-        return search_youtube_noapi(query)
-def get_token_spotify():
-    """
-    get an access token from spotify API by using Client ID/Secret.
-    also, it stores ID as ClientID:Secret format and reuses in next usage.
-    I did my best to get access token in CLI app so do not blame me please.
-    """
-    try:
-        cli = open(os.path.join(PATH, "spotify_client")).read()
-    except:
-        print("spotify_client file was not found. creating new one...")
-        cli_id = input("Client ID: ")
-        cli_secret = input("Client Secret: ")
-        print("Saving...", end = "")
-        cli = cli_id + ":" + cli_secret
-        open(os.path.join(PATH, "spotify_client"), "w").write(cli)
-        print("Done.")
-    cli_b64 = b64encode(cli.encode()).decode()
-    r = requests.post("https://accounts.spotify.com/api/token",
-                      data = {"grant_type": "client_credentials"},
-                      headers = {"Authorization": f"Basic {cli_b64}"})
-    token = json.loads(r.text)['access_token']
-    return token
-
-def get_playlist_spotify(token, playlistid):
-    """
-    Get playlist from spotify API, form it as 'artists - song name' style and return it
-    as I can't find a way to play from spotify directly in a command line.
-    Should be rewritten to get song IDs from spotify when I somehow find a way to do it
-    """
-    rtnlist = []
-    url = f"https://api.spotify.com/v1/playlists/{playlistid}/tracks?fields=items(track(name, artists)), next"
-    while True:
-        r = requests.get(url, headers = {"Authorization": "Bearer " + token})
-        res = json.loads(r.text)
-        playlist = res['items']
-        for item in playlist:
-            title = item['track']['name']
-            artists = ", ".join([artist['name'] for artist in item['track']['artists']])
-            searchstr = artists + " - " + title
-            if not searchstr in rtnlist:
-                rtnlist.append(artists + " - " + title)
-        if res['next']:
-            url = res['next']
-        else:
-            break
-    return rtnlist
-
-def get_playlist_yt_noapi(driver, playlistid):
-    """
-    Connect to the playlist page, press "Load more" button until that button
-    doesn't exist anymore, make a dictionary out of it and save it as a text
-    file.
-    """
-    url = f"https://www.youtube.com/playlist?list={playlistid}"
-    driver.get(url)
-    while True:
-        try:
-            button = driver.find_element_by_class_name("yt-uix-load-more")
-        except selenium.common.exceptions.NoSuchElementException:
-            break
-        button.click()
-    soup = bs(driver.page_source, "html.parser")
-    playlist = []
-    for vid in soup.find_all("tr", {"class": "pl-video"}):
-        tempdict = {}
-        tempdict['type'] = "youtube"
-        tempdict['title'] = vid['data-title']
-        tempdict['owner'] = vid.find("div", {"class": "pl-video-owner"}).find("a").text
-        tempdict['id'] = vid['data-video-id']
-        playlist.append(tempdict)
-    
-    rtndict = {
-        "type": "youtube",
-        "id": playlistid,
-        "list": playlist
-    }
-    return rtndict
-
-def play_yt(driver, video):
-    """
-    Switch to first tab, get youtube player and use loadVideoById function to load video,
-    use getPlayerState function to check if video has finished and return if true.
-    """
-    driver.execute_script(f"document.getElementById('movie_player').loadVideoById('{video['id']}')")
-    rtnvalue = 0
-    playing = True
-    pos = 0
-    # getDuration() value will return 0 while loading metadata and that causes the Exception
-    # This will prevent it from being 0
-    fulltime = 0
-    while not fulltime:
-        fulltime = driver.execute_script("return document.getElementById('movie_player').getDuration()")
-    while True:
-        if driver.execute_script("return document.getElementById('movie_player').getPlayerState()") == 0:
-            break
-        curtime = driver.execute_script("return document.getElementById('movie_player').getCurrentTime()")
-        pos = status_text(video['title'], pos, curtime, fulltime, playing)
-        key = keyinput.listen_key(1)
-        if key != None:
-            key = key.upper()
-            if key == " ":
-                if playing:
-                    driver.execute_script("document.getElementById('movie_player').pauseVideo()")
-                    playing = False
-                else:
-                    driver.execute_script("document.getElementById('movie_player').playVideo()")
-                    playing = True
-            elif key == "Q":
-                rtnvalue = 1
-                break
-            elif key == "E":
-                rtnvalue = 0
-                break
-    # Workaround to stop autoplay.
-    driver.execute_script("document.getElementById('movie_player').playVideo()")
-    driver.execute_script("document.getElementById('movie_player').pauseVideo()")
-    return rtnvalue
+    return printtxt, pos
 
 PATH = os.path.dirname(os.path.abspath(__file__))
 
@@ -222,6 +67,9 @@ parser_get.add_argument("-y", "--youtube", nargs = "*",
                         help = "Lists of youtube playlists to get.")
 parser_get.add_argument("-s", "--spotify", nargs = "*",
                         help = "Lists of spotify playlists to get.")
+parser_get.add_argument("-p", "--processes", nargs = "?", default = 4, type = int, 
+                        help = "Amounts of processes to be used while performing parallel\
+                        functions. default is 4.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -231,10 +79,6 @@ if __name__ == "__main__":
                         for video in json.load(
                             open(os.path.join(
                                 PATH, "playlist", f"{alias}.playlist")))['list']]
-        # I mean, Some videos can't be played in /embed somehow and I can't find a way to fix it
-        # So let's just use Rick Astley - Never Gonna Give You Up's page to play it lol
-        # If something bad happens this will end up rickrolling the user
-        url_yt = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         options = Options()
         options.headless = args.debug
         options.set_preference("media.autoplay.default", 0)
@@ -243,29 +87,60 @@ if __name__ == "__main__":
             open(os.path.join(PATH, "adblocker.xpi"))
             driver.install_addon(os.path.join(PATH, "adblocker.xpi"))
         except:pass
-        driver.get(url_yt)
-        driver.execute_script("document.getElementById('movie_player').pauseVideo()")
-
+        tab = {}
+        # This will be used to add different tabs used by providers
+        module.youtube.play.prepare_tab(driver)
+        tab['youtube'] = driver.current_window_handle
+        printtxt = ""
         while True:
             if args.shuffle:
                 random.shuffle(playlist)
             num = 0
             while num < len(playlist):
                 video = playlist[num]
+                printtxt_prev = printtxt
                 printtxt = f"\rNow Playing {video['title']} by {video['owner']}"
-                printtxt += " " * (os.get_terminal_size().columns - len(printtxt))
+                printtxt += " " * (len(printtxt_prev.encode()) - len(printtxt.encode()))
                 print(printtxt)
-                rtn = play_yt(driver, video)
-                if rtn == 1:
-                    if num == 0:
-                        num = len(playlist)
+                provider = getattr(module, video['type']).play
+                driver.switch_to.window(tab[video['type']])
+                provider.prepare_play(video['id'], driver)
+
+                pos = 0
+                status = 0
+                playing = True 
+                fulltime = provider.get_duration(driver)
+
+                while not provider.is_finished(driver):
+                    curtime = provider.get_current_time(driver)
+                    printtxt_prev = printtxt
+                    printtxt, pos = status_text(video['title'], pos, curtime, fulltime, playing)
+                    printtxt += " " * (len(printtxt_prev.encode()) - len(printtxt.encode()))
+                    print(printtxt, end = "")
+                    key = keyinput.listen_key(1)
+                    if key != None:
+                        key = key.upper()
+                        if key == " ":
+                            if playing:
+                                provider.pause(driver)
+                                playing = False
+                            else:
+                                provider.play(driver)
+                                playing = True
+                        elif key == "Q":
+                            status = 1
+                            break
+                        elif key == "E":
+                            break
+                provider.prepare_finish(driver)
+                if status == 1:
                     num -= 1
                 else:
                     num += 1
+
             if not args.repeat:
                 break
 
-    # TODO: use same driver for every loop of "get" thing
     elif args.mode == "get":
         """
         check if there's at least 1 argument and every argument contains :
@@ -273,34 +148,28 @@ if __name__ == "__main__":
         if not (args.youtube or args.spotify):
             parser_get.error("You have to input at least 1 playlist")
         if args.youtube:
-            options = Options()
-            options.headless = True
-            options.set_preference("general.useragent.override", "")
-            driver = Firefox(executable_path = DRIVER, options = options)
-            for playlist in args.youtube:
-                print("Getting", playlist, "...")
-                split = playlist.split(":")
+            for playlistinfo in args.youtube:
+                print("Getting", playlistinfo, "...")
+                split = playlistinfo.split(":")
                 if len(split) == 1:
                     parser_get.error("Alias must be specified in playlist")
                 elif len(split) != 2:
                     parser_get.error("Alias can't contain character ':'")
                 playlistid, alias = split
-                rtndict = get_playlist_yt_noapi(driver, playlistid)
-                json.dump(rtndict, open(os.path.join(PATH, "playlist", f"{alias}.playlist"), "w"),
+                playlist = module.youtube.get.get_playlist(playlistid)
+                json.dump(playlist, open(os.path.join(PATH, "playlist", f"{alias}.playlist"), "w"),
                           indent = 4)
         if args.spotify:
-            delay = 0
-            for playlist in args.spotify:
-                print("Getting", playlist, "...")
-                playlistid, alias = playlist.split(":")
-                token = get_token_spotify()
-                searchlist = get_playlist_spotify(token, playlistid)
+            for playlistinfo in args.spotify:
+                print("Getting", playlistinfo, "...")
+                split = playlistinfo.split(":")
+                if len(split) == 1:
+                    parser_get.error("Alias must be specified in playlist")
+                elif len(split) != 2:
+                    parser_get.error("Alias can't contain character ':'")
+                playlistid, alias = split
+                playlist = module.spotify.get.get_playlist(playlistid)
                 #rtnlist = [search_youtube_noapi(query) for query in searchlist] <= Without multiprocessing
-                rtnlist = multiprocessing.Pool(100).map(search_youtube_noapi, searchlist)
-                rtndict = {
-                    "type": "spotify",
-                    "id": playlistid,
-                    "list": rtnlist
-                }
-                json.dump(rtndict, open(os.path.join(PATH, "playlist", f"{alias}.playlist"), "w"),
+                playlist = module.youtube.get.convert_playlist(playlist, args.processes)
+                json.dump(playlist, open(os.path.join(PATH, "playlist", f"{alias}.playlist"), "w"),
                           indent = 4)
