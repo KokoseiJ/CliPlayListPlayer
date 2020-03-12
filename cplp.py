@@ -142,6 +142,8 @@ if __name__ == "__main__":
                 break
 
     elif args.mode == "get":
+        if not "playlist" in os.listdir():
+            os.mkdir("playlist")
         """
         check if there's at least 1 argument and every argument contains :
         """
